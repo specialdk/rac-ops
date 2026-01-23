@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>OPS Time 1 Sitzler - Daily Shift Report</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Back to Home -->
+    <a href="index.html" class="back-link">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+        Back to Forms
+    </a>
+
+    <div class="form-container">
+        <!-- Header -->
+        <header class="form-header">
+            <div class="header-left">
+                <h1 class="company-name">SITZLER</h1>
+                <h2 class="form-title">DAILY SHIFT REPORT</h2>
+            </div>
+            <div class="header-right">
+                <label class="docket-label">DOCKET NO:</label>
+                <input type="text" id="docketNo" class="docket-input" placeholder="0000" maxlength="6">
+            </div>
+        </header>
+
+        <!-- Section 1: Details -->
+        <section class="form-section">
+            <h3 class="section-title">Section 1: Details</h3>
+            <div class="details-grid">
+                <div class="detail-row">
+                    <label for="siteLocation">Site / Location</label>
+                    <input type="text" id="siteLocation" placeholder="Enter site location">
+                </div>
+                <div class="detail-row">
+                    <label for="shiftDate">Date</label>
+                    <input type="date" id="shiftDate">
+                </div>
+                <div class="detail-row">
+                    <label for="client">Client</label>
+                    <input type="text" id="client" placeholder="Enter client name">
+                </div>
+                <div class="detail-row">
+                    <label>Shift</label>
+                    <div class="shift-toggle">
+                        <button type="button" class="shift-btn active" data-shift="day">DAY</button>
+                        <button type="button" class="shift-btn" data-shift="night">NIGHT</button>
+                    </div>
+                </div>
+                <div class="detail-row full-width">
+                    <label for="operatorName">Operator Name</label>
+                    <input type="text" id="operatorName" placeholder="Enter operator name">
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: Equipment and Personnel -->
+        <section class="form-section">
+            <h3 class="section-title">Section 2: Equipment and Personnel</h3>
+            <div class="table-container">
+                <table class="data-table" id="equipmentTable">
+                    <thead>
+                        <tr>
+                            <th>Asset ID</th>
+                            <th>Asset Description</th>
+                            <th>Machine Hrs Start</th>
+                            <th>Machine Hrs Finish</th>
+                            <th>Total Hrs</th>
+                            <th class="action-col"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="equipmentBody">
+                        <tr>
+                            <td><input type="text" class="asset-id" placeholder="EX17"></td>
+                            <td><input type="text" class="asset-desc" placeholder="Excavator"></td>
+                            <td><input type="number" class="hrs-start" placeholder="0" step="0.1"></td>
+                            <td><input type="number" class="hrs-finish" placeholder="0" step="0.1"></td>
+                            <td><input type="number" class="hrs-total" readonly></td>
+                            <td class="action-col"><button type="button" class="remove-row-btn" title="Remove row">×</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <button type="button" class="add-row-btn" id="addEquipmentRow">+ Add Equipment</button>
+            </div>
+
+            <div class="breakdown-section">
+                <label>Breakdown or Stand Down Details:</label>
+                <div class="yn-toggle">
+                    <button type="button" class="yn-btn" data-value="Y">Y</button>
+                    <button type="button" class="yn-btn" data-value="N">N</button>
+                </div>
+                <div class="breakdown-details" id="breakdownDetails" style="display: none;">
+                    <label for="breakdownText">Details:</label>
+                    <textarea id="breakdownText" rows="2" placeholder="Enter breakdown/stand down details"></textarea>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Personnel Details -->
+        <section class="form-section">
+            <h3 class="section-title">Section 3: Personnel Details</h3>
+            <div class="table-container">
+                <table class="data-table" id="personnelTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Start Time</th>
+                            <th>Finish Time</th>
+                            <th>Break (hrs)</th>
+                            <th>Total Hours</th>
+                            <th class="action-col"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="personnelBody">
+                        <tr>
+                            <td><input type="text" class="person-name" placeholder="Enter name"></td>
+                            <td><input type="time" class="time-start"></td>
+                            <td><input type="time" class="time-finish"></td>
+                            <td><input type="number" class="break-hrs" placeholder="0" step="0.25" min="0"></td>
+                            <td><input type="number" class="total-hrs" readonly></td>
+                            <td class="action-col"><button type="button" class="remove-row-btn" title="Remove row">×</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <button type="button" class="add-row-btn" id="addPersonnelRow">+ Add Personnel</button>
+            </div>
+        </section>
+
+        <!-- Section 4: Works Description -->
+        <section class="form-section">
+            <h3 class="section-title">Section 4: Works Description</h3>
+            <textarea id="worksDescription" rows="4" placeholder="Describe the work completed during this shift..."></textarea>
+        </section>
+
+        <!-- Section 5: Signatures -->
+        <section class="form-section">
+            <h3 class="section-title">Section 5: Signature</h3>
+            
+            <div class="signature-block">
+                <h4>Sitzler Representative</h4>
+                <div class="signature-grid">
+                    <div class="sig-field">
+                        <label for="sitzlerName">Name</label>
+                        <input type="text" id="sitzlerName" placeholder="Enter name">
+                    </div>
+                    <div class="sig-field">
+                        <label for="sitzlerDate">Date</label>
+                        <input type="date" id="sitzlerDate">
+                    </div>
+                    <div class="sig-field">
+                        <label for="sitzlerPosition">Position</label>
+                        <input type="text" id="sitzlerPosition" placeholder="Enter position">
+                    </div>
+                    <div class="sig-field signature-pad-container">
+                        <label>Signature</label>
+                        <canvas id="sitzlerSignature" class="signature-pad"></canvas>
+                        <button type="button" class="clear-sig-btn" data-canvas="sitzlerSignature">Clear</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="signature-block">
+                <h4>Client Representative</h4>
+                <div class="signature-grid">
+                    <div class="sig-field">
+                        <label for="clientRepName">Name</label>
+                        <input type="text" id="clientRepName" placeholder="Enter name">
+                    </div>
+                    <div class="sig-field">
+                        <label for="clientRepDate">Date</label>
+                        <input type="date" id="clientRepDate">
+                    </div>
+                    <div class="sig-field">
+                        <label for="clientRepPosition">Position</label>
+                        <input type="text" id="clientRepPosition" placeholder="Enter position">
+                    </div>
+                    <div class="sig-field signature-pad-container">
+                        <label>Signature</label>
+                        <canvas id="clientSignature" class="signature-pad"></canvas>
+                        <button type="button" class="clear-sig-btn" data-canvas="clientSignature">Clear</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Form Actions -->
+        <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="clearFormBtn">Clear Form</button>
+            <button type="button" class="btn btn-secondary" id="saveDraftBtn">Save Draft</button>
+            <button type="button" class="btn btn-primary" id="submitFormBtn">Submit Report</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

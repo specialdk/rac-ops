@@ -1,0 +1,195 @@
+/* Landing Page Styles */
+
+.landing-body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Background Images - Partially Transparent */
+.bg-image {
+    position: fixed;
+    width: 40%;
+    height: 100%;
+    background-size: contain;
+    background-repeat: no-repeat;
+    opacity: 0.15;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.bg-image-left {
+    left: 0;
+    bottom: 0;
+    background-position: left bottom;
+    /* Replace with your asset image */
+    background-image: url('images/bg-assets.png');
+}
+
+.bg-image-right {
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    background-position: right center;
+    /* Replace with your timesheet image */
+    background-image: url('images/bg-timesheet.png');
+}
+
+/* Landing Container */
+.landing-container {
+    width: 100%;
+    max-width: 600px;
+    position: relative;
+    z-index: 1;
+}
+
+/* Header */
+.landing-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.landing-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+}
+
+.landing-subtitle {
+    font-size: 1rem;
+    color: var(--text-light);
+}
+
+/* Form Options */
+.form-options {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.form-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 24px;
+    background: var(--white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s ease;
+    border: 2px solid transparent;
+}
+
+.form-card:hover:not(.disabled) {
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.form-card:active:not(.disabled) {
+    transform: translateY(0);
+}
+
+.form-card.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.form-card-icon {
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+    border-radius: var(--radius);
+    color: var(--white);
+    flex-shrink: 0;
+}
+
+.form-card.disabled .form-card-icon {
+    background: var(--border-color);
+}
+
+.form-card-content {
+    flex: 1;
+}
+
+.form-card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 2px;
+}
+
+.form-card-desc {
+    font-size: 0.9rem;
+    color: var(--text-light);
+}
+
+.form-card-arrow {
+    color: var(--text-light);
+    transition: transform 0.2s ease;
+}
+
+.form-card:hover:not(.disabled) .form-card-arrow {
+    transform: translateX(4px);
+    color: var(--primary-color);
+}
+
+/* Footer */
+.landing-footer {
+    text-align: center;
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color);
+}
+
+.landing-footer p {
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+/* Responsive */
+@media screen and (max-width: 600px) {
+    .landing-title {
+        font-size: 1.6rem;
+    }
+
+    .form-card {
+        padding: 16px 20px;
+    }
+
+    .form-card-icon {
+        width: 48px;
+        height: 48px;
+    }
+
+    .form-card-icon svg {
+        width: 24px;
+        height: 24px;
+    }
+
+    .bg-image {
+        width: 50%;
+        opacity: 0.1;
+    }
+}
+
+/* iPad Landscape */
+@media screen and (min-width: 1024px) {
+    .landing-title {
+        font-size: 2.5rem;
+    }
+
+    .form-card {
+        padding: 24px 32px;
+    }
+}
