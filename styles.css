@@ -595,3 +595,30 @@ textarea {
         page-break-inside: avoid;
     }
 }
+
+/* Back Link */
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    margin: 20px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--primary-color);
+    text-decoration: none;
+    background: var(--white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    transition: all 0.2s ease;
+}
+
+.back-link:hover {
+    background: var(--primary-color);
+    color: var(--white);
+    transform: translateX(-4px);
+}
+
+.back-link svg {
+    flex-shrink: 0;
+}
