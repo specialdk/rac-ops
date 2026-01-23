@@ -27,6 +27,7 @@
         prefillPersonnel();
         bindEvents();
         initSignaturePads();
+        loadDraft(); 
     }
 
     // Load all JSON data
@@ -122,6 +123,160 @@
         }
     }
 
+    // Load draft from localStorage if exists
+function loadDraft() {
+    const docket = docketNo.value;
+    if (!docket) return;
+
+    const savedDraft = localStorage.getItem(`opsTimeDraft_${docket}`);
+    if (!savedDraft) return;
+
+    try {
+        const data = JSON.parse(savedDraft);
+        
+        // Restore location and client
+        if (data.location) {
+            siteLocation.value = data.location;
+            clientField.value = data.client || '';
+        }
+
+        // Restore date
+        if (data.date) {
+            shiftDate.value = data.date;
+        }
+
+        // Restore shift toggle
+        if (data.shift) {
+            document.querySelectorAll('.shift-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.shift === data.shift) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+
+        // Restore equipment rows
+        if (data.equipment && data.equipment.length > 0) {
+            // Clear existing rows
+            equipmentBody.innerHTML = '';
+            
+            data.equipment.forEach((eq, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        <select class="asset-id">
+                            <option value="">-- Select --</option>
+                        </select>
+                    </td>
+                    <td><input type="text" class="asset-desc" readonly placeholder="Auto-filled"></td>
+                    <td><input type="number" class="hrs-start" placeholder="0" step="0.1"></td>
+                    <td><input type="number" class="hrs-finish" placeholder="0" step="0.1"></td>
+                    <td><input type="number" class="hrs-total" readonly></td>
+                    <td class="action-col"><button type="button" class="remove-row-btn" title="Remove row">×</button></td>
+                `;
+                equipmentBody.appendChild(row);
+                
+                // Populate dropdown and set values
+                const select = row.querySelector('.asset-id');
+                populateEquipmentSelect(select);
+                select.value = eq.assetKey || '';
+                row.querySelector('.asset-desc').value = eq.description || '';
+                row.querySelector('.hrs-start').value = eq.hrsStart || '';
+                row.querySelector('.hrs-finish').value = eq.hrsFinish || '';
+                row.querySelector('.hrs-total').value = eq.totalHrs || '';
+            });
+        }
+
+        // Restore breakdown
+        if (data.breakdown) {
+            document.querySelectorAll('.yn-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if ((data.breakdown.hasBreakdown && btn.dataset.value === 'Y') ||
+                    (!data.breakdown.hasBreakdown && btn.dataset.value === 'N')) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            if (data.breakdown.hasBreakdown) {
+                document.getElementById('breakdownDetails').style.display = 'block';
+                document.getElementById('breakdownText').value = data.breakdown.details || '';
+            }
+        }
+
+        // Restore personnel rows
+        if (data.personnel && data.personnel.length > 0) {
+            // Clear existing rows
+            personnelBody.innerHTML = '';
+            
+            data.personnel.forEach((person, index) => {
+                const row = document.createElement('tr');
+                const isFirstRow = index === 0;
+                row.innerHTML = `
+                    <td><input type="text" class="person-name" ${isFirstRow ? 'readonly' : ''} placeholder="${isFirstRow ? '' : 'Enter name'}"></td>
+                    <td><input type="time" class="time-start"></td>
+                    <td><input type="time" class="time-finish"></td>
+                    <td><input type="number" class="break-hrs" placeholder="0" step="0.25" min="0"></td>
+                    <td><input type="number" class="total-hrs" readonly></td>
+                    <td class="action-col"><button type="button" class="remove-row-btn" title="Remove row">×</button></td>
+                `;
+                personnelBody.appendChild(row);
+                
+                // Set values
+                row.querySelector('.person-name').value = person.name || '';
+                row.querySelector('.time-start').value = person.startTime || '';
+                row.querySelector('.time-finish').value = person.finishTime || '';
+                row.querySelector('.break-hrs').value = person.breakHrs || '';
+                row.querySelector('.total-hrs').value = person.totalHrs || '';
+            });
+        }
+
+        // Restore works description
+        if (data.worksDescription) {
+            document.getElementById('worksDescription').value = data.worksDescription;
+        }
+
+        // Restore signature text fields
+        if (data.signatures) {
+            if (data.signatures.sitzler) {
+                document.getElementById('sitzlerName').value = data.signatures.sitzler.name || '';
+                document.getElementById('sitzlerDate').value = data.signatures.sitzler.date || '';
+                document.getElementById('sitzlerPosition').value = data.signatures.sitzler.position || '';
+            }
+            if (data.signatures.client) {
+                document.getElementById('clientRepName').value = data.signatures.client.name || '';
+                document.getElementById('clientRepDate').value = data.signatures.client.date || '';
+                document.getElementById('clientRepPosition').value = data.signatures.client.position || '';
+            }
+        }
+
+        // Restore signature images
+        if (data.signatures?.sitzler?.signature) {
+            restoreSignature('sitzlerSignature', data.signatures.sitzler.signature);
+        }
+        if (data.signatures?.client?.signature) {
+            restoreSignature('clientSignature', data.signatures.client.signature);
+        }
+
+        showToast('Draft restored', 'success');
+        
+    } catch (error) {
+        console.error('Failed to load draft:', error);
+    }
+}
+
+// Restore signature from dataURL
+function restoreSignature(canvasId, dataURL) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !dataURL) return;
+    
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = function() {
+        ctx.drawImage(img, 0, 0);
+    };
+    img.src = dataURL;
+}
+    
     // Bind all events
     function bindEvents() {
         // Location change - auto-fill client
