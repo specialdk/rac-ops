@@ -1,0 +1,6 @@
+{
+  "name": "rac-ops",
+  "scripts": {
+    "start": "npx serve -s . -l $PORT"
+  }
+}
