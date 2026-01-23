@@ -21,9 +21,33 @@
             <p class="landing-subtitle">Select a timesheet form to continue</p>
         </header>
 
+        <!-- Operator Selection -->
+        <section class="operator-section">
+            <div class="operator-card">
+                <div class="operator-label">Operator</div>
+                <div class="operator-controls">
+                    <select id="operatorSelect" class="operator-select">
+                        <option value="">-- Select Operator --</option>
+                    </select>
+                    <button type="button" id="lockBtn" class="lock-btn" disabled>
+                        <svg class="lock-icon unlocked" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                        </svg>
+                        <svg class="lock-icon locked" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        <span class="lock-text">Lock</span>
+                    </button>
+                </div>
+                <div class="operator-status" id="operatorStatus"></div>
+            </div>
+        </section>
+
         <!-- Form Options -->
         <nav class="form-options">
-            <a href="sitzler.html" class="form-card">
+            <a href="sitzler.html" class="form-card disabled" id="sitzlerCard">
                 <div class="form-card-icon">
                     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -113,5 +137,7 @@
             <p>RAC Operations</p>
         </footer>
     </div>
+
+    <script src="landing.js"></script>
 </body>
 </html>
