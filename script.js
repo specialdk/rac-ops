@@ -1,419 +1,284 @@
-/**
- * OPS Time 1 Sitzler - Daily Shift Report
- * Form functionality script
- */
+// Sitzler Daily Shift Report - Form Logic
 
-document.addEventListener('DOMContentLoaded', function() {
-    initializeForm();
-});
+(function() {
+    'use strict';
 
-function initializeForm() {
-    // Set today's date as default
-    setDefaultDates();
-    
-    // Initialize shift toggle
-    initShiftToggle();
-    
-    // Initialize breakdown Y/N toggle
-    initBreakdownToggle();
-    
-    // Initialize equipment table
-    initEquipmentTable();
-    
-    // Initialize personnel table
-    initPersonnelTable();
-    
-    // Initialize signature pads
-    initSignaturePads();
-    
-    // Initialize form actions
-    initFormActions();
-    
-    // Load draft if exists
-    loadDraft();
-}
+    // Data stores
+    let operators = [];
+    let locations = [];
+    let equipment = [];
+    let currentOperator = null;
 
-// ===================
-// Date Defaults
-// ===================
-function setDefaultDates() {
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('shiftDate').value = today;
-    document.getElementById('sitzlerDate').value = today;
-    document.getElementById('clientRepDate').value = today;
-}
+    // DOM Elements
+    const docketNo = document.getElementById('docketNo');
+    const siteLocation = document.getElementById('siteLocation');
+    const shiftDate = document.getElementById('shiftDate');
+    const clientField = document.getElementById('client');
+    const operatorName = document.getElementById('operatorName');
+    const equipmentBody = document.getElementById('equipmentBody');
+    const personnelBody = document.getElementById('personnelBody');
 
-// ===================
-// Shift Toggle
-// ===================
-function initShiftToggle() {
-    const shiftBtns = document.querySelectorAll('.shift-btn');
-    
-    shiftBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
-            shiftBtns.forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-        });
-    });
-}
+    // Initialize
+    async function init() {
+        await loadData();
+        loadOperatorFromLanding();
+        populateDropdowns();
+        setDefaultDate();
+        prefillPersonnel();
+        bindEvents();
+        initSignaturePads();
+    }
 
-// ===================
-// Breakdown Toggle
-// ===================
-function initBreakdownToggle() {
-    const ynBtns = document.querySelectorAll('.yn-btn');
-    const breakdownDetails = document.getElementById('breakdownDetails');
-    
-    ynBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
-            ynBtns.forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
+    // Load all JSON data
+    async function loadData() {
+        try {
+            const [opsRes, locRes, eqRes] = await Promise.all([
+                fetch('data/operators.json'),
+                fetch('data/locations.json'),
+                fetch('data/equipment.json')
+            ]);
+            operators = await opsRes.json();
+            locations = await locRes.json();
+            equipment = await eqRes.json();
+        } catch (error) {
+            console.error('Failed to load data:', error);
+            showToast('Error loading form data', 'error');
+        }
+    }
+
+    // Load operator from landing page localStorage
+    function loadOperatorFromLanding() {
+        const saved = localStorage.getItem('opsTimeOperator');
+        if (saved) {
+            const data = JSON.parse(saved);
+            currentOperator = operators.find(op => op.opkey === data.opkey);
             
-            // Show/hide details based on selection
-            if (this.dataset.value === 'Y') {
-                breakdownDetails.style.display = 'block';
-            } else {
-                breakdownDetails.style.display = 'none';
+            if (currentOperator) {
+                // Set operator name
+                operatorName.value = `${currentOperator.first} ${currentOperator.last}`;
+                
+                // Generate and set docket number
+                docketNo.value = generateDocket();
             }
-        });
-    });
-}
-
-// ===================
-// Equipment Table
-// ===================
-function initEquipmentTable() {
-    const addBtn = document.getElementById('addEquipmentRow');
-    const tbody = document.getElementById('equipmentBody');
-    
-    // Add row button
-    addBtn.addEventListener('click', () => addEquipmentRow());
-    
-    // Initialize existing rows
-    initEquipmentRowListeners(tbody.querySelector('tr'));
-}
-
-function addEquipmentRow() {
-    const tbody = document.getElementById('equipmentBody');
-    const newRow = document.createElement('tr');
-    
-    newRow.innerHTML = `
-        <td><input type="text" class="asset-id" placeholder="EX17"></td>
-        <td><input type="text" class="asset-desc" placeholder="Excavator"></td>
-        <td><input type="number" class="hrs-start" placeholder="0" step="0.1"></td>
-        <td><input type="number" class="hrs-finish" placeholder="0" step="0.1"></td>
-        <td><input type="number" class="hrs-total" readonly></td>
-        <td class="action-col"><button type="button" class="remove-row-btn" title="Remove row">×</button></td>
-    `;
-    
-    tbody.appendChild(newRow);
-    initEquipmentRowListeners(newRow);
-    
-    // Focus on first input
-    newRow.querySelector('.asset-id').focus();
-}
-
-function initEquipmentRowListeners(row) {
-    // Calculate total hours
-    const hrsStart = row.querySelector('.hrs-start');
-    const hrsFinish = row.querySelector('.hrs-finish');
-    const hrsTotal = row.querySelector('.hrs-total');
-    
-    function calculateEquipmentHours() {
-        const start = parseFloat(hrsStart.value) || 0;
-        const finish = parseFloat(hrsFinish.value) || 0;
-        const total = finish - start;
-        hrsTotal.value = total >= 0 ? total.toFixed(1) : '';
-    }
-    
-    hrsStart.addEventListener('input', calculateEquipmentHours);
-    hrsFinish.addEventListener('input', calculateEquipmentHours);
-    
-    // Remove row
-    const removeBtn = row.querySelector('.remove-row-btn');
-    removeBtn.addEventListener('click', function() {
-        const tbody = document.getElementById('equipmentBody');
-        if (tbody.children.length > 1) {
-            row.remove();
         } else {
-            showToast('At least one equipment row is required', 'error');
+            // No operator locked - redirect back to landing
+            showToast('Please select and lock an operator first', 'error');
+            setTimeout(() => {
+                window.location.href = 'index.html';
+            }, 2000);
         }
-    });
-}
-
-// ===================
-// Personnel Table
-// ===================
-function initPersonnelTable() {
-    const addBtn = document.getElementById('addPersonnelRow');
-    const tbody = document.getElementById('personnelBody');
-    
-    // Add row button
-    addBtn.addEventListener('click', () => addPersonnelRow());
-    
-    // Initialize existing rows
-    initPersonnelRowListeners(tbody.querySelector('tr'));
-}
-
-function addPersonnelRow() {
-    const tbody = document.getElementById('personnelBody');
-    const newRow = document.createElement('tr');
-    
-    newRow.innerHTML = `
-        <td><input type="text" class="person-name" placeholder="Enter name"></td>
-        <td><input type="time" class="time-start"></td>
-        <td><input type="time" class="time-finish"></td>
-        <td><input type="number" class="break-hrs" placeholder="0" step="0.25" min="0"></td>
-        <td><input type="number" class="total-hrs" readonly></td>
-        <td class="action-col"><button type="button" class="remove-row-btn" title="Remove row">×</button></td>
-    `;
-    
-    tbody.appendChild(newRow);
-    initPersonnelRowListeners(newRow);
-    
-    // Focus on first input
-    newRow.querySelector('.person-name').focus();
-}
-
-function initPersonnelRowListeners(row) {
-    // Calculate total hours
-    const timeStart = row.querySelector('.time-start');
-    const timeFinish = row.querySelector('.time-finish');
-    const breakHrs = row.querySelector('.break-hrs');
-    const totalHrs = row.querySelector('.total-hrs');
-    
-    function calculatePersonnelHours() {
-        if (!timeStart.value || !timeFinish.value) {
-            totalHrs.value = '';
-            return;
-        }
-        
-        const start = timeToDecimal(timeStart.value);
-        const finish = timeToDecimal(timeFinish.value);
-        const breakTime = parseFloat(breakHrs.value) || 0;
-        
-        let total = finish - start - breakTime;
-        
-        // Handle overnight shifts
-        if (total < 0) {
-            total += 24;
-        }
-        
-        totalHrs.value = total >= 0 ? total.toFixed(2) : '';
     }
-    
-    timeStart.addEventListener('input', calculatePersonnelHours);
-    timeFinish.addEventListener('input', calculatePersonnelHours);
-    breakHrs.addEventListener('input', calculatePersonnelHours);
-    
-    // Remove row
-    const removeBtn = row.querySelector('.remove-row-btn');
-    removeBtn.addEventListener('click', function() {
-        const tbody = document.getElementById('personnelBody');
-        if (tbody.children.length > 1) {
-            row.remove();
-        } else {
-            showToast('At least one personnel row is required', 'error');
-        }
-    });
-}
 
-function timeToDecimal(timeString) {
-    const [hours, minutes] = timeString.split(':').map(Number);
-    return hours + (minutes / 60);
-}
+    // Generate docket number: OPKEY - DD-MM-YY
+    function generateDocket() {
+        if (!currentOperator) return '';
+        const today = new Date();
+        const dd = String(today.getDate()).padStart(2, '0');
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const yy = String(today.getFullYear()).slice(-2);
+        return `${currentOperator.opkey} - ${dd}-${mm}-${yy}`;
+    }
 
-// ===================
-// Signature Pads
-// ===================
-let signaturePads = {};
-
-function initSignaturePads() {
-    const canvases = ['sitzlerSignature', 'clientSignature'];
-    
-    canvases.forEach(canvasId => {
-        const canvas = document.getElementById(canvasId);
-        const ctx = canvas.getContext('2d');
-        
-        // Set canvas size
-        resizeCanvas(canvas);
-        
-        signaturePads[canvasId] = {
-            canvas: canvas,
-            ctx: ctx,
-            isDrawing: false,
-            lastX: 0,
-            lastY: 0
-        };
-        
-        // Mouse events
-        canvas.addEventListener('mousedown', (e) => startDrawing(canvasId, e));
-        canvas.addEventListener('mousemove', (e) => draw(canvasId, e));
-        canvas.addEventListener('mouseup', () => stopDrawing(canvasId));
-        canvas.addEventListener('mouseout', () => stopDrawing(canvasId));
-        
-        // Touch events
-        canvas.addEventListener('touchstart', (e) => startDrawing(canvasId, e));
-        canvas.addEventListener('touchmove', (e) => draw(canvasId, e));
-        canvas.addEventListener('touchend', () => stopDrawing(canvasId));
-    });
-    
-    // Clear signature buttons
-    document.querySelectorAll('.clear-sig-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const canvasId = this.dataset.canvas;
-            clearSignature(canvasId);
+    // Populate dropdowns
+    function populateDropdowns() {
+        // Location dropdown
+        siteLocation.innerHTML = '<option value="">-- Select Location --</option>';
+        locations.forEach(loc => {
+            const option = document.createElement('option');
+            option.value = loc.lockey;
+            option.textContent = loc.location;
+            option.dataset.client = loc.client;
+            siteLocation.appendChild(option);
         });
-    });
-    
-    // Handle window resize
-    window.addEventListener('resize', () => {
-        canvases.forEach(canvasId => {
-            resizeCanvas(document.getElementById(canvasId));
+
+        // Equipment dropdowns (initial row)
+        populateEquipmentSelect(equipmentBody.querySelector('.asset-id'));
+    }
+
+    // Populate a single equipment select
+    function populateEquipmentSelect(selectEl) {
+        selectEl.innerHTML = '<option value="">-- Select --</option>';
+        equipment.forEach(eq => {
+            const option = document.createElement('option');
+            option.value = eq.eqkey;
+            option.textContent = eq.equipment;
+            selectEl.appendChild(option);
         });
-    });
-}
-
-function resizeCanvas(canvas) {
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-    
-    const ctx = canvas.getContext('2d');
-    ctx.strokeStyle = '#2c3e50';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-}
-
-function getPosition(canvasId, e) {
-    const canvas = signaturePads[canvasId].canvas;
-    const rect = canvas.getBoundingClientRect();
-    
-    let clientX, clientY;
-    
-    if (e.touches) {
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
-    } else {
-        clientX = e.clientX;
-        clientY = e.clientY;
     }
-    
-    return {
-        x: clientX - rect.left,
-        y: clientY - rect.top
-    };
-}
 
-function startDrawing(canvasId, e) {
-    e.preventDefault();
-    const pad = signaturePads[canvasId];
-    const pos = getPosition(canvasId, e);
-    
-    pad.isDrawing = true;
-    pad.lastX = pos.x;
-    pad.lastY = pos.y;
-}
-
-function draw(canvasId, e) {
-    e.preventDefault();
-    const pad = signaturePads[canvasId];
-    
-    if (!pad.isDrawing) return;
-    
-    const pos = getPosition(canvasId, e);
-    
-    pad.ctx.beginPath();
-    pad.ctx.moveTo(pad.lastX, pad.lastY);
-    pad.ctx.lineTo(pos.x, pos.y);
-    pad.ctx.stroke();
-    
-    pad.lastX = pos.x;
-    pad.lastY = pos.y;
-}
-
-function stopDrawing(canvasId) {
-    signaturePads[canvasId].isDrawing = false;
-}
-
-function clearSignature(canvasId) {
-    const pad = signaturePads[canvasId];
-    pad.ctx.clearRect(0, 0, pad.canvas.width, pad.canvas.height);
-}
-
-function isSignatureEmpty(canvasId) {
-    const canvas = signaturePads[canvasId].canvas;
-    const ctx = canvas.getContext('2d');
-    const pixelData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-    
-    for (let i = 3; i < pixelData.length; i += 4) {
-        if (pixelData[i] > 0) return false;
+    // Set default date to today
+    function setDefaultDate() {
+        const today = new Date().toISOString().split('T')[0];
+        shiftDate.value = today;
     }
-    return true;
-}
 
-// ===================
-// Form Actions
-// ===================
-function initFormActions() {
-    document.getElementById('clearFormBtn').addEventListener('click', clearForm);
-    document.getElementById('saveDraftBtn').addEventListener('click', saveDraft);
-    document.getElementById('submitFormBtn').addEventListener('click', submitForm);
-}
-
-function clearForm() {
-    if (confirm('Are you sure you want to clear the form? All data will be lost.')) {
-        // Clear all inputs
-        document.querySelectorAll('input[type="text"], input[type="number"], textarea').forEach(input => {
-            if (!input.readOnly) {
-                input.value = '';
+    // Prefill personnel with current operator
+    function prefillPersonnel() {
+        if (currentOperator) {
+            const firstPersonName = personnelBody.querySelector('.person-name');
+            if (firstPersonName) {
+                firstPersonName.value = `${currentOperator.first} ${currentOperator.last}`;
             }
+        }
+    }
+
+    // Bind all events
+    function bindEvents() {
+        // Location change - auto-fill client
+        siteLocation.addEventListener('change', onLocationChange);
+
+        // Shift toggle
+        document.querySelectorAll('.shift-btn').forEach(btn => {
+            btn.addEventListener('click', onShiftToggle);
         });
-        
-        // Reset dates
-        setDefaultDates();
-        
-        // Reset shift toggle
+
+        // Equipment table
+        document.getElementById('addEquipmentRow').addEventListener('click', addEquipmentRow);
+        equipmentBody.addEventListener('click', onEquipmentTableClick);
+        equipmentBody.addEventListener('change', onEquipmentChange);
+        equipmentBody.addEventListener('input', onEquipmentInput);
+
+        // Personnel table
+        document.getElementById('addPersonnelRow').addEventListener('click', addPersonnelRow);
+        personnelBody.addEventListener('click', onPersonnelTableClick);
+        personnelBody.addEventListener('input', onPersonnelInput);
+
+        // Breakdown toggle
+        document.querySelectorAll('.yn-btn').forEach(btn => {
+            btn.addEventListener('click', onBreakdownToggle);
+        });
+
+        // Form actions
+        document.getElementById('clearFormBtn').addEventListener('click', clearForm);
+        document.getElementById('saveDraftBtn').addEventListener('click', saveDraft);
+        document.getElementById('submitFormBtn').addEventListener('click', submitForm);
+    }
+
+    // Location changed - auto-fill client
+    function onLocationChange() {
+        const selectedOption = siteLocation.options[siteLocation.selectedIndex];
+        if (selectedOption && selectedOption.dataset.client) {
+            clientField.value = selectedOption.dataset.client;
+        } else {
+            clientField.value = '';
+        }
+    }
+
+    // Shift toggle
+    function onShiftToggle(e) {
         document.querySelectorAll('.shift-btn').forEach(btn => btn.classList.remove('active'));
-        document.querySelector('.shift-btn[data-shift="day"]').classList.add('active');
-        
-        // Reset breakdown toggle
-        document.querySelectorAll('.yn-btn').forEach(btn => btn.classList.remove('active'));
-        document.getElementById('breakdownDetails').style.display = 'none';
-        
-        // Clear signatures
-        Object.keys(signaturePads).forEach(canvasId => clearSignature(canvasId));
-        
-        // Reset tables to single row
-        resetTable('equipmentBody', addEquipmentRow, initEquipmentRowListeners);
-        resetTable('personnelBody', addPersonnelRow, initPersonnelRowListeners);
-        
-        // Clear local storage
-        localStorage.removeItem('opsTimeDraft');
-        
-        showToast('Form cleared', 'success');
+        e.target.classList.add('active');
     }
-}
 
-function resetTable(tbodyId, addRowFn, initRowFn) {
-    const tbody = document.getElementById(tbodyId);
-    tbody.innerHTML = '';
-    
-    // Add fresh row based on table type
-    if (tbodyId === 'equipmentBody') {
+    // Equipment table - row click handler
+    function onEquipmentTableClick(e) {
+        if (e.target.classList.contains('remove-row-btn')) {
+            const row = e.target.closest('tr');
+            if (equipmentBody.querySelectorAll('tr').length > 1) {
+                row.remove();
+            } else {
+                showToast('Cannot remove the last row', 'error');
+            }
+        }
+    }
+
+    // Equipment select changed - auto-fill description
+    function onEquipmentChange(e) {
+        if (e.target.classList.contains('asset-id')) {
+            const row = e.target.closest('tr');
+            const descField = row.querySelector('.asset-desc');
+            const eqkey = parseInt(e.target.value);
+            const eq = equipment.find(item => item.eqkey === eqkey);
+            descField.value = eq ? eq.equipment : '';
+        }
+    }
+
+    // Equipment hours input - calculate total
+    function onEquipmentInput(e) {
+        if (e.target.classList.contains('hrs-start') || e.target.classList.contains('hrs-finish')) {
+            const row = e.target.closest('tr');
+            calculateEquipmentHours(row);
+        }
+    }
+
+    // Calculate equipment total hours
+    function calculateEquipmentHours(row) {
+        const start = parseFloat(row.querySelector('.hrs-start').value) || 0;
+        const finish = parseFloat(row.querySelector('.hrs-finish').value) || 0;
+        const total = finish - start;
+        row.querySelector('.hrs-total').value = total > 0 ? total.toFixed(1) : '';
+    }
+
+    // Add equipment row
+    function addEquipmentRow() {
         const newRow = document.createElement('tr');
         newRow.innerHTML = `
-            <td><input type="text" class="asset-id" placeholder="EX17"></td>
-            <td><input type="text" class="asset-desc" placeholder="Excavator"></td>
+            <td>
+                <select class="asset-id">
+                    <option value="">-- Select --</option>
+                </select>
+            </td>
+            <td><input type="text" class="asset-desc" readonly placeholder="Auto-filled"></td>
             <td><input type="number" class="hrs-start" placeholder="0" step="0.1"></td>
             <td><input type="number" class="hrs-finish" placeholder="0" step="0.1"></td>
             <td><input type="number" class="hrs-total" readonly></td>
             <td class="action-col"><button type="button" class="remove-row-btn" title="Remove row">×</button></td>
         `;
-        tbody.appendChild(newRow);
-        initEquipmentRowListeners(newRow);
-    } else {
+        equipmentBody.appendChild(newRow);
+        populateEquipmentSelect(newRow.querySelector('.asset-id'));
+    }
+
+    // Personnel table - row click handler
+    function onPersonnelTableClick(e) {
+        if (e.target.classList.contains('remove-row-btn')) {
+            const row = e.target.closest('tr');
+            if (personnelBody.querySelectorAll('tr').length > 1) {
+                row.remove();
+            } else {
+                showToast('Cannot remove the last row', 'error');
+            }
+        }
+    }
+
+    // Personnel time input - calculate total hours
+    function onPersonnelInput(e) {
+        if (e.target.classList.contains('time-start') || 
+            e.target.classList.contains('time-finish') || 
+            e.target.classList.contains('break-hrs')) {
+            const row = e.target.closest('tr');
+            calculatePersonnelHours(row);
+        }
+    }
+
+    // Calculate personnel total hours
+    function calculatePersonnelHours(row) {
+        const startTime = row.querySelector('.time-start').value;
+        const finishTime = row.querySelector('.time-finish').value;
+        const breakHrs = parseFloat(row.querySelector('.break-hrs').value) || 0;
+
+        if (startTime && finishTime) {
+            const start = timeToMinutes(startTime);
+            let finish = timeToMinutes(finishTime);
+            
+            // Handle overnight shifts
+            if (finish < start) {
+                finish += 24 * 60;
+            }
+
+            const totalMinutes = finish - start - (breakHrs * 60);
+            const totalHours = totalMinutes / 60;
+            row.querySelector('.total-hrs').value = totalHours > 0 ? totalHours.toFixed(2) : '';
+        }
+    }
+
+    // Convert time string to minutes
+    function timeToMinutes(timeStr) {
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        return hours * 60 + minutes;
+    }
+
+    // Add personnel row
+    function addPersonnelRow() {
         const newRow = document.createElement('tr');
         newRow.innerHTML = `
             <td><input type="text" class="person-name" placeholder="Enter name"></td>
@@ -423,190 +288,290 @@ function resetTable(tbodyId, addRowFn, initRowFn) {
             <td><input type="number" class="total-hrs" readonly></td>
             <td class="action-col"><button type="button" class="remove-row-btn" title="Remove row">×</button></td>
         `;
-        tbody.appendChild(newRow);
-        initPersonnelRowListeners(newRow);
+        personnelBody.appendChild(newRow);
     }
-}
 
-function saveDraft() {
-    const formData = collectFormData();
-    localStorage.setItem('opsTimeDraft', JSON.stringify(formData));
-    showToast('Draft saved', 'success');
-}
-
-function loadDraft() {
-    const draft = localStorage.getItem('opsTimeDraft');
-    if (draft) {
-        try {
-            const formData = JSON.parse(draft);
-            populateForm(formData);
-        } catch (e) {
-            console.error('Error loading draft:', e);
-        }
-    }
-}
-
-function collectFormData() {
-    // Collect all form data
-    const data = {
-        docketNo: document.getElementById('docketNo').value,
-        siteLocation: document.getElementById('siteLocation').value,
-        client: document.getElementById('client').value,
-        operatorName: document.getElementById('operatorName').value,
-        shiftDate: document.getElementById('shiftDate').value,
-        shift: document.querySelector('.shift-btn.active')?.dataset.shift || 'day',
-        breakdown: document.querySelector('.yn-btn.active')?.dataset.value || null,
-        breakdownText: document.getElementById('breakdownText').value,
-        worksDescription: document.getElementById('worksDescription').value,
-        equipment: [],
-        personnel: [],
-        sitzler: {
-            name: document.getElementById('sitzlerName').value,
-            date: document.getElementById('sitzlerDate').value,
-            position: document.getElementById('sitzlerPosition').value,
-            signature: document.getElementById('sitzlerSignature').toDataURL()
-        },
-        clientRep: {
-            name: document.getElementById('clientRepName').value,
-            date: document.getElementById('clientRepDate').value,
-            position: document.getElementById('clientRepPosition').value,
-            signature: document.getElementById('clientSignature').toDataURL()
-        }
-    };
-    
-    // Collect equipment rows
-    document.querySelectorAll('#equipmentBody tr').forEach(row => {
-        data.equipment.push({
-            assetId: row.querySelector('.asset-id').value,
-            assetDesc: row.querySelector('.asset-desc').value,
-            hrsStart: row.querySelector('.hrs-start').value,
-            hrsFinish: row.querySelector('.hrs-finish').value,
-            hrsTotal: row.querySelector('.hrs-total').value
-        });
-    });
-    
-    // Collect personnel rows
-    document.querySelectorAll('#personnelBody tr').forEach(row => {
-        data.personnel.push({
-            name: row.querySelector('.person-name').value,
-            timeStart: row.querySelector('.time-start').value,
-            timeFinish: row.querySelector('.time-finish').value,
-            breakHrs: row.querySelector('.break-hrs').value,
-            totalHrs: row.querySelector('.total-hrs').value
-        });
-    });
-    
-    return data;
-}
-
-function populateForm(data) {
-    // Populate basic fields
-    if (data.docketNo) document.getElementById('docketNo').value = data.docketNo;
-    if (data.siteLocation) document.getElementById('siteLocation').value = data.siteLocation;
-    if (data.client) document.getElementById('client').value = data.client;
-    if (data.operatorName) document.getElementById('operatorName').value = data.operatorName;
-    if (data.shiftDate) document.getElementById('shiftDate').value = data.shiftDate;
-    if (data.worksDescription) document.getElementById('worksDescription').value = data.worksDescription;
-    if (data.breakdownText) document.getElementById('breakdownText').value = data.breakdownText;
-    
-    // Set shift
-    if (data.shift) {
-        document.querySelectorAll('.shift-btn').forEach(btn => btn.classList.remove('active'));
-        document.querySelector(`.shift-btn[data-shift="${data.shift}"]`)?.classList.add('active');
-    }
-    
-    // Set breakdown
-    if (data.breakdown) {
+    // Breakdown toggle
+    function onBreakdownToggle(e) {
         document.querySelectorAll('.yn-btn').forEach(btn => btn.classList.remove('active'));
-        document.querySelector(`.yn-btn[data-value="${data.breakdown}"]`)?.classList.add('active');
-        if (data.breakdown === 'Y') {
-            document.getElementById('breakdownDetails').style.display = 'block';
+        e.target.classList.add('active');
+
+        const breakdownDetails = document.getElementById('breakdownDetails');
+        if (e.target.dataset.value === 'Y') {
+            breakdownDetails.style.display = 'block';
+        } else {
+            breakdownDetails.style.display = 'none';
         }
     }
-    
-    // Populate signature fields
-    if (data.sitzler) {
-        if (data.sitzler.name) document.getElementById('sitzlerName').value = data.sitzler.name;
-        if (data.sitzler.date) document.getElementById('sitzlerDate').value = data.sitzler.date;
-        if (data.sitzler.position) document.getElementById('sitzlerPosition').value = data.sitzler.position;
-    }
-    
-    if (data.clientRep) {
-        if (data.clientRep.name) document.getElementById('clientRepName').value = data.clientRep.name;
-        if (data.clientRep.date) document.getElementById('clientRepDate').value = data.clientRep.date;
-        if (data.clientRep.position) document.getElementById('clientRepPosition').value = data.clientRep.position;
-    }
-}
 
-function submitForm() {
-    // Basic validation
-    const errors = validateForm();
-    
-    if (errors.length > 0) {
-        showToast(errors[0], 'error');
-        return;
-    }
-    
-    const formData = collectFormData();
-    
-    // For now, just log and show success
-    // In production, this would send to a backend
-    console.log('Form submitted:', formData);
-    
-    showToast('Report submitted successfully!', 'success');
-    
-    // Clear draft after successful submission
-    localStorage.removeItem('opsTimeDraft');
-}
+    // Signature pads
+    function initSignaturePads() {
+        const canvases = document.querySelectorAll('.signature-pad');
+        canvases.forEach(canvas => {
+            const ctx = canvas.getContext('2d');
+            let isDrawing = false;
+            let lastX = 0;
+            let lastY = 0;
 
-function validateForm() {
-    const errors = [];
-    
-    if (!document.getElementById('docketNo').value) {
-        errors.push('Please enter a Docket Number');
-    }
-    
-    if (!document.getElementById('siteLocation').value) {
-        errors.push('Please enter Site/Location');
-    }
-    
-    if (!document.getElementById('client').value) {
-        errors.push('Please enter Client name');
-    }
-    
-    if (!document.getElementById('operatorName').value) {
-        errors.push('Please enter Operator Name');
-    }
-    
-    if (!document.getElementById('worksDescription').value) {
-        errors.push('Please enter Works Description');
-    }
-    
-    return errors;
-}
+            // Set canvas size
+            function resizeCanvas() {
+                const rect = canvas.getBoundingClientRect();
+                canvas.width = rect.width;
+                canvas.height = rect.height;
+                ctx.strokeStyle = '#2c3e50';
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+            }
 
-// ===================
-// Toast Notifications
-// ===================
-function showToast(message, type = 'info') {
-    // Remove existing toast
-    const existingToast = document.querySelector('.toast');
-    if (existingToast) {
-        existingToast.remove();
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            // Get coordinates
+            function getCoords(e) {
+                const rect = canvas.getBoundingClientRect();
+                if (e.touches) {
+                    return {
+                        x: e.touches[0].clientX - rect.left,
+                        y: e.touches[0].clientY - rect.top
+                    };
+                }
+                return {
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top
+                };
+            }
+
+            // Drawing functions
+            function startDrawing(e) {
+                isDrawing = true;
+                const coords = getCoords(e);
+                lastX = coords.x;
+                lastY = coords.y;
+            }
+
+            function draw(e) {
+                if (!isDrawing) return;
+                e.preventDefault();
+                const coords = getCoords(e);
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(coords.x, coords.y);
+                ctx.stroke();
+                lastX = coords.x;
+                lastY = coords.y;
+            }
+
+            function stopDrawing() {
+                isDrawing = false;
+            }
+
+            // Mouse events
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseout', stopDrawing);
+
+            // Touch events
+            canvas.addEventListener('touchstart', startDrawing);
+            canvas.addEventListener('touchmove', draw);
+            canvas.addEventListener('touchend', stopDrawing);
+        });
+
+        // Clear signature buttons
+        document.querySelectorAll('.clear-sig-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const canvasId = btn.dataset.canvas;
+                const canvas = document.getElementById(canvasId);
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            });
+        });
     }
-    
-    // Create new toast
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    
-    // Show toast
-    setTimeout(() => toast.classList.add('show'), 10);
-    
-    // Hide toast
-    setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
-}
+
+    // Clear form
+    function clearForm() {
+        if (confirm('Are you sure you want to clear the form? All data will be lost.')) {
+            // Reset fields but keep operator and docket
+            siteLocation.value = '';
+            clientField.value = '';
+            setDefaultDate();
+            document.querySelector('.shift-btn[data-shift="day"]').click();
+            
+            // Reset equipment table to single row
+            equipmentBody.innerHTML = `
+                <tr>
+                    <td>
+                        <select class="asset-id">
+                            <option value="">-- Select --</option>
+                        </select>
+                    </td>
+                    <td><input type="text" class="asset-desc" readonly placeholder="Auto-filled"></td>
+                    <td><input type="number" class="hrs-start" placeholder="0" step="0.1"></td>
+                    <td><input type="number" class="hrs-finish" placeholder="0" step="0.1"></td>
+                    <td><input type="number" class="hrs-total" readonly></td>
+                    <td class="action-col"><button type="button" class="remove-row-btn" title="Remove row">×</button></td>
+                </tr>
+            `;
+            populateEquipmentSelect(equipmentBody.querySelector('.asset-id'));
+
+            // Reset personnel table but keep operator name
+            personnelBody.innerHTML = `
+                <tr>
+                    <td><input type="text" class="person-name" readonly></td>
+                    <td><input type="time" class="time-start"></td>
+                    <td><input type="time" class="time-finish"></td>
+                    <td><input type="number" class="break-hrs" placeholder="0" step="0.25" min="0"></td>
+                    <td><input type="number" class="total-hrs" readonly></td>
+                    <td class="action-col"><button type="button" class="remove-row-btn" title="Remove row">×</button></td>
+                </tr>
+            `;
+            prefillPersonnel();
+
+            // Reset breakdown
+            document.querySelectorAll('.yn-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('breakdownDetails').style.display = 'none';
+            document.getElementById('breakdownText').value = '';
+
+            // Reset works description
+            document.getElementById('worksDescription').value = '';
+
+            // Reset signatures
+            document.querySelectorAll('.signature-block input').forEach(input => {
+                if (!input.id.includes('Date')) {
+                    input.value = '';
+                }
+            });
+            document.querySelectorAll('.signature-pad').forEach(canvas => {
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            });
+
+            showToast('Form cleared', 'success');
+        }
+    }
+
+    // Save draft to localStorage
+    function saveDraft() {
+        const formData = collectFormData();
+        const docket = docketNo.value;
+        localStorage.setItem(`opsTimeDraft_${docket}`, JSON.stringify(formData));
+        showToast('Draft saved', 'success');
+    }
+
+    // Collect all form data
+    function collectFormData() {
+        return {
+            docket: docketNo.value,
+            operator: currentOperator,
+            location: siteLocation.value,
+            locationName: siteLocation.options[siteLocation.selectedIndex]?.text || '',
+            client: clientField.value,
+            date: shiftDate.value,
+            shift: document.querySelector('.shift-btn.active')?.dataset.shift || 'day',
+            equipment: collectEquipmentData(),
+            breakdown: {
+                hasBreakdown: document.querySelector('.yn-btn.active')?.dataset.value === 'Y',
+                details: document.getElementById('breakdownText').value
+            },
+            personnel: collectPersonnelData(),
+            worksDescription: document.getElementById('worksDescription').value,
+            signatures: {
+                sitzler: {
+                    name: document.getElementById('sitzlerName').value,
+                    date: document.getElementById('sitzlerDate').value,
+                    position: document.getElementById('sitzlerPosition').value,
+                    signature: document.getElementById('sitzlerSignature').toDataURL()
+                },
+                client: {
+                    name: document.getElementById('clientRepName').value,
+                    date: document.getElementById('clientRepDate').value,
+                    position: document.getElementById('clientRepPosition').value,
+                    signature: document.getElementById('clientSignature').toDataURL()
+                }
+            },
+            savedAt: new Date().toISOString()
+        };
+    }
+
+    // Collect equipment table data
+    function collectEquipmentData() {
+        const rows = equipmentBody.querySelectorAll('tr');
+        const data = [];
+        rows.forEach(row => {
+            const assetSelect = row.querySelector('.asset-id');
+            data.push({
+                assetKey: assetSelect.value,
+                assetId: assetSelect.options[assetSelect.selectedIndex]?.text || '',
+                description: row.querySelector('.asset-desc').value,
+                hrsStart: row.querySelector('.hrs-start').value,
+                hrsFinish: row.querySelector('.hrs-finish').value,
+                totalHrs: row.querySelector('.hrs-total').value
+            });
+        });
+        return data;
+    }
+
+    // Collect personnel table data
+    function collectPersonnelData() {
+        const rows = personnelBody.querySelectorAll('tr');
+        const data = [];
+        rows.forEach(row => {
+            data.push({
+                name: row.querySelector('.person-name').value,
+                startTime: row.querySelector('.time-start').value,
+                finishTime: row.querySelector('.time-finish').value,
+                breakHrs: row.querySelector('.break-hrs').value,
+                totalHrs: row.querySelector('.total-hrs').value
+            });
+        });
+        return data;
+    }
+
+    // Submit form
+    function submitForm() {
+        // Basic validation
+        if (!siteLocation.value) {
+            showToast('Please select a location', 'error');
+            return;
+        }
+
+        const formData = collectFormData();
+        
+        // Store in submitted forms collection
+        const submitted = JSON.parse(localStorage.getItem('opsTimeSubmitted') || '[]');
+        submitted.push({
+            ...formData,
+            submittedAt: new Date().toISOString()
+        });
+        localStorage.setItem('opsTimeSubmitted', JSON.stringify(submitted));
+
+        // Remove draft
+        localStorage.removeItem(`opsTimeDraft_${docketNo.value}`);
+
+        showToast('Report submitted successfully!', 'success');
+
+        // Optional: redirect back to landing after delay
+        setTimeout(() => {
+            window.location.href = 'index.html';
+        }, 2000);
+    }
+
+    // Toast notification
+    function showToast(message, type = 'info') {
+        let toast = document.querySelector('.toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.className = 'toast';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = message;
+        toast.className = `toast ${type} show`;
+        setTimeout(() => {
+            toast.classList.remove('show');
+        }, 3000);
+    }
+
+    // Start
+    document.addEventListener('DOMContentLoaded', init);
+})();
