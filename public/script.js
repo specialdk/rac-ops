@@ -684,33 +684,82 @@ function restoreSignature(canvasId, dataURL) {
     }
 
     // Submit form
-    function submitForm() {
-        // Basic validation
-        if (!siteLocation.value) {
-            showToast('Please select a location', 'error');
-            return;
-        }
-
-        const formData = collectFormData();
-        
-        // Store in submitted forms collection
-        const submitted = JSON.parse(localStorage.getItem('opsTimeSubmitted') || '[]');
-        submitted.push({
-            ...formData,
-            submittedAt: new Date().toISOString()
-        });
-        localStorage.setItem('opsTimeSubmitted', JSON.stringify(submitted));
-
-        // Remove draft
-        localStorage.removeItem(`opsTimeDraft_${docketNo.value}`);
-
-        showToast('Report submitted successfully!', 'success');
-
-        // Optional: redirect back to landing after delay
-        setTimeout(() => {
-            window.location.href = 'index.html';
-        }, 2000);
+async function submitForm() {
+    // Basic validation
+    if (!siteLocation.value) {
+        showToast('Please select a location', 'error');
+        return;
     }
+
+    const formData = collectFormData();
+    
+    // Add to offline queue
+    addToSyncQueue(formData);
+    
+    // Try to sync immediately
+    await syncToServer();
+    
+    // Remove draft
+    localStorage.removeItem(`opsTimeDraft_${docketNo.value}`);
+
+    showToast('Report submitted!', 'success');
+
+    // Redirect back to landing after delay
+    setTimeout(() => {
+        window.location.href = 'index.html';
+    }, 2000);
+}
+
+// Add submission to sync queue
+function addToSyncQueue(formData) {
+    const queue = JSON.parse(localStorage.getItem('opsTimeSyncQueue') || '[]');
+    
+    // Remove any existing entry for same docket (update scenario)
+    const filtered = queue.filter(item => item.docket !== formData.docket);
+    filtered.push({
+        ...formData,
+        submittedAt: new Date().toISOString(),
+        syncStatus: 'pending'
+    });
+    
+    localStorage.setItem('opsTimeSyncQueue', JSON.stringify(filtered));
+}
+
+// Sync queue to server
+async function syncToServer() {
+    const queue = JSON.parse(localStorage.getItem('opsTimeSyncQueue') || '[]');
+    const pending = queue.filter(item => item.syncStatus === 'pending');
+    
+    if (pending.length === 0) return;
+    
+    for (const item of pending) {
+        try {
+            const response = await fetch('/api/submissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(item)
+            });
+            
+            if (response.ok) {
+                // Mark as synced
+                item.syncStatus = 'synced';
+                item.syncedAt = new Date().toISOString();
+                showToast(`Synced: ${item.docket}`, 'success');
+            } else {
+                console.error('Sync failed:', await response.text());
+            }
+        } catch (error) {
+            console.error('Sync error:', error);
+            // Keep as pending for retry
+        }
+    }
+    
+    // Update queue in localStorage
+    localStorage.setItem('opsTimeSyncQueue', JSON.stringify(queue));
+}
+
+// Auto-sync on page load if online
+window.addEventListener('online', syncToServer);
 
     // Toast notification
     function showToast(message, type = 'info') {
