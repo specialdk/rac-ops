@@ -821,7 +821,7 @@ async function submitForm() {
 
 // Add submission to sync queue
 function addToSyncQueue(formData) {
-    const queue = JSON.parse(sessionStorage.getItem('opsTimeSyncQueue') || '[]');
+    const queue = JSON.parse(localStorage.getItem('opsTimeSyncQueue') || '[]');
     
     // Remove any existing entry for same docket (update scenario)
     const filtered = queue.filter(item => item.docket !== formData.docket);
@@ -836,7 +836,7 @@ function addToSyncQueue(formData) {
 
 // Sync queue to server
 async function syncToServer() {
-    const queue = JSON.parse(sessionStorage.getItem('opsTimeSyncQueue') || '[]');
+    const queue = JSON.parse(localStorage.getItem('opsTimeSyncQueue') || '[]');
     const pending = queue.filter(item => item.syncStatus === 'pending');
     
     if (pending.length === 0) return;
