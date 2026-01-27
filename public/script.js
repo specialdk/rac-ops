@@ -28,6 +28,7 @@
         bindEvents();
         initSignaturePads();
         loadDraft(); 
+        await checkExistingSubmission();
     }
 
     // Load all JSON data
@@ -79,6 +80,108 @@
         const yy = String(today.getFullYear()).slice(-2);
         return `${currentOperator.opkey} - ${dd}-${mm}-${yy}`;
     }
+
+    // Add after generateDocket() is called in loadOperatorFromLanding()
+
+// Check if submission already exists for this docket
+async function checkExistingSubmission() {
+    const docket = docketNo.value;
+    if (!docket) return;
+    
+    try {
+        const response = await fetch(`/api/submissions/${encodeURIComponent(docket)}`);
+        if (response.ok) {
+            const data = await response.json();
+            if (confirm(`A submission already exists for docket ${docket}.\n\nDo you want to load it for editing?`)) {
+                loadSubmissionIntoForm(data);
+            }
+        }
+    } catch (error) {
+        // No existing submission - that's fine
+        console.log('No existing submission found');
+    }
+}
+
+// Load submission data into form
+function loadSubmissionIntoForm(data) {
+    // Location & Client
+    if (data.location_key) {
+        siteLocation.value = data.location_key;
+        clientField.value = data.client || '';
+    }
+    
+    // Date
+    if (data.shift_date) {
+        shiftDate.value = data.shift_date.split('T')[0];
+    }
+    
+    // Shift toggle
+    document.querySelectorAll('.shift-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.shift === data.shift_type) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Equipment rows
+    if (data.equipment && data.equipment.length > 0) {
+        equipmentBody.innerHTML = '';
+        data.equipment.forEach(eq => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><select class="asset-id"><option value="">-- Select --</option></select></td>
+                <td><input type="text" class="asset-desc" readonly placeholder="Auto-filled"></td>
+                <td><input type="number" class="hrs-start" placeholder="0" step="0.1"></td>
+                <td><input type="number" class="hrs-finish" placeholder="0" step="0.1"></td>
+                <td><input type="number" class="hrs-total" readonly></td>
+                <td class="action-col"><button type="button" class="remove-row-btn" title="Remove row">×</button></td>
+            `;
+            equipmentBody.appendChild(row);
+            populateEquipmentSelect(row.querySelector('.asset-id'));
+            
+            // Find equipment by name and set value
+            const eq_match = equipment.find(e => e.equipment === eq.equipment_name);
+            if (eq_match) row.querySelector('.asset-id').value = eq_match.eqkey;
+            row.querySelector('.asset-desc').value = eq.equipment_name || '';
+            row.querySelector('.hrs-start').value = eq.hrs_start || '';
+            row.querySelector('.hrs-finish').value = eq.hrs_finish || '';
+            row.querySelector('.hrs-total').value = eq.total_hrs || '';
+        });
+    }
+    
+    // Breakdown
+    if (data.has_breakdown) {
+        document.querySelector('.yn-btn[data-value="Y"]').click();
+        document.getElementById('breakdownText').value = data.breakdown_details || '';
+    }
+    
+    // Personnel rows
+    if (data.personnel && data.personnel.length > 0) {
+        personnelBody.innerHTML = '';
+        data.personnel.forEach((person, index) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><input type="text" class="person-name" ${index === 0 ? 'readonly' : ''} placeholder="${index === 0 ? '' : 'Enter name'}"></td>
+                <td><input type="time" class="time-start"></td>
+                <td><input type="time" class="time-finish"></td>
+                <td><input type="number" class="break-hrs" placeholder="0" step="0.25" min="0"></td>
+                <td><input type="number" class="total-hrs" readonly></td>
+                <td class="action-col"><button type="button" class="remove-row-btn" title="Remove row">×</button></td>
+            `;
+            personnelBody.appendChild(row);
+            row.querySelector('.person-name').value = person.person_name || '';
+            row.querySelector('.time-start').value = person.start_time?.slice(0,5) || '';
+            row.querySelector('.time-finish').value = person.finish_time?.slice(0,5) || '';
+            row.querySelector('.break-hrs').value = person.break_hrs || '';
+            row.querySelector('.total-hrs').value = person.total_hrs || '';
+        });
+    }
+    
+    // Works description
+    document.getElementById('worksDescription').value = data.works_description || '';
+    
+    showToast('Submission loaded for editing', 'success');
+}
 
     // Populate dropdowns
     function populateDropdowns() {
