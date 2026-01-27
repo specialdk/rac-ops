@@ -193,3 +193,13 @@
         padding: 24px 32px;
     }
 }
+
+.report-card {
+    pointer-events: auto !important;
+    opacity: 1 !important;
+}
+
+.report-card .form-card-icon {
+    background: #b91c3c;
+    color: white;
+}
