@@ -214,6 +214,69 @@ app.get('/api/submissions/:docket', async (req, res) => {
     }
 });
 
+// Daily summary report
+app.get('/api/reports/daily', async (req, res) => {
+    try {
+        const { date } = req.query;
+        const reportDate = date || new Date().toISOString().split('T')[0];
+        
+        const result = await pool.query(`
+            SELECT 
+                s.id,
+                s.docket,
+                s.operator_name,
+                s.location_name,
+                s.client,
+                s.shift_type,
+                s.works_description,
+                COALESCE(eq.total_equipment_hrs, 0) as total_equipment_hrs,
+                COALESCE(p.total_personnel_hrs, 0) as total_personnel_hrs,
+                eq.equipment_summary,
+                p.personnel_summary
+            FROM submissions s
+            LEFT JOIN (
+                SELECT 
+                    submission_id,
+                    SUM(total_hrs) as total_equipment_hrs,
+                    json_agg(json_build_object(
+                        'name', equipment_name,
+                        'hrs', total_hrs
+                    )) as equipment_summary
+                FROM submission_equipment
+                GROUP BY submission_id
+            ) eq ON s.id = eq.submission_id
+            LEFT JOIN (
+                SELECT 
+                    submission_id,
+                    SUM(total_hrs) as total_personnel_hrs,
+                    json_agg(json_build_object(
+                        'name', person_name,
+                        'hrs', total_hrs
+                    )) as personnel_summary
+                FROM submission_personnel
+                GROUP BY submission_id
+            ) p ON s.id = p.submission_id
+            WHERE s.shift_date = $1
+            ORDER BY s.operator_name
+        `, [reportDate]);
+        
+        // Calculate totals
+        const totals = {
+            equipment_hrs: result.rows.reduce((sum, r) => sum + parseFloat(r.total_equipment_hrs || 0), 0),
+            personnel_hrs: result.rows.reduce((sum, r) => sum + parseFloat(r.total_personnel_hrs || 0), 0)
+        };
+        
+        res.json({
+            date: reportDate,
+            submissions: result.rows,
+            totals
+        });
+    } catch (error) {
+        console.error('Report error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Catch-all: serve index.html for client-side routing
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
