@@ -46,7 +46,7 @@
 
     // Restore state from localStorage
     function restoreState() {
-        const saved = localStorage.getItem('opsTimeOperator');
+        const saved = sessionStorage.getItem('opsTimeOperator');
         if (saved) {
             const data = JSON.parse(saved);
             currentOperator = operators.find(op => op.opkey === data.opkey);
@@ -84,7 +84,7 @@
             lockBtn.classList.remove('is-locked');
             sitzlerCard.classList.remove('enabled');
             sitzlerCard.classList.add('disabled');
-            localStorage.removeItem('opsTimeOperator');
+            sessionStorage.removeItem('opsTimeOperator');
         } else {
             // Lock
             if (!currentOperator) return;
@@ -106,7 +106,7 @@
     // Save state to localStorage
     function saveState() {
         if (currentOperator && isLocked) {
-            localStorage.setItem('opsTimeOperator', JSON.stringify({
+            sessionStorage.setItem('opsTimeOperator', JSON.stringify({
                 opkey: currentOperator.opkey,
                 isLocked: true
             }));

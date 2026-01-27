@@ -50,7 +50,7 @@
 
     // Load operator from landing page localStorage
     function loadOperatorFromLanding() {
-        const saved = localStorage.getItem('opsTimeOperator');
+        const saved = sessionStorage.getItem('opsTimeOperator');
         if (saved) {
             const data = JSON.parse(saved);
             currentOperator = operators.find(op => op.opkey === data.opkey);
@@ -237,7 +237,7 @@ function loadDraft() {
     const docket = docketNo.value;
     if (!docket) return;
 
-    const savedDraft = localStorage.getItem(`opsTimeDraft_${docket}`);
+    const savedDraft = sessionStorage.getItem(`opsTimeDraft_${docket}`);
     if (!savedDraft) return;
 
     try {
@@ -821,7 +821,7 @@ async function submitForm() {
 
 // Add submission to sync queue
 function addToSyncQueue(formData) {
-    const queue = JSON.parse(localStorage.getItem('opsTimeSyncQueue') || '[]');
+    const queue = JSON.parse(sessionStorage.getItem('opsTimeSyncQueue') || '[]');
     
     // Remove any existing entry for same docket (update scenario)
     const filtered = queue.filter(item => item.docket !== formData.docket);
@@ -836,7 +836,7 @@ function addToSyncQueue(formData) {
 
 // Sync queue to server
 async function syncToServer() {
-    const queue = JSON.parse(localStorage.getItem('opsTimeSyncQueue') || '[]');
+    const queue = JSON.parse(sessionStorage.getItem('opsTimeSyncQueue') || '[]');
     const pending = queue.filter(item => item.syncStatus === 'pending');
     
     if (pending.length === 0) return;
