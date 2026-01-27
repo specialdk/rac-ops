@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Report - OPS Time</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="report.css">
+</head>
+<body class="report-body">
+    <div class="report-container">
+        <header class="report-header no-print">
+            <a href="index.html" class="back-link">‹ Back to Forms</a>
+            <h1>Daily Summary Report</h1>
+            <div class="report-controls">
+                <input type="date" id="reportDate">
+                <button id="loadReport" class="btn-primary">Load</button>
+                <button id="printReport" class="btn-secondary">Print / PDF</button>
+            </div>
+        </header>
+
+        <div class="print-header print-only">
+            <h1>OPS Time - Daily Summary Report</h1>
+            <p class="report-date-display"></p>
+        </div>
+
+        <main class="report-content">
+            <div id="loading" class="loading">Loading...</div>
+            <div id="noData" class="no-data" style="display:none;">No submissions for this date.</div>
+            
+            <table id="reportTable" class="report-table" style="display:none;">
+                <thead>
+                    <tr>
+                        <th>Operator</th>
+                        <th>Location</th>
+                        <th>Equipment</th>
+                        <th>Equip Hrs</th>
+                        <th>Personnel Hrs</th>
+                        <th>Work Description</th>
+                    </tr>
+                </thead>
+                <tbody id="reportBody">
+                </tbody>
+                <tfoot id="reportFooter">
+                </tfoot>
+            </table>
+        </main>
+
+        <footer class="report-footer print-only">
+            <p>Generated: <span id="generatedTime"></span></p>
+        </footer>
+    </div>
+
+    <script src="report.js"></script>
+</body>
+</html>
