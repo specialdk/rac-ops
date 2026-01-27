@@ -94,6 +94,12 @@ async function checkExistingSubmission() {
             const data = await response.json();
             if (confirm(`A submission already exists for docket ${docket}.\n\nDo you want to load it for editing?`)) {
                 loadSubmissionIntoForm(data);
+            } else {
+                // User declined - redirect back to prevent accidental overwrite
+                showToast('Returning to landing page...', 'info');
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 1500);
             }
         }
     } catch (error) {
