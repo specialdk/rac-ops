@@ -88,11 +88,11 @@
         // Render totals
         const footerRow = document.createElement('tr');
         footerRow.innerHTML = `
-            <td colspan="3"><strong>TOTALS</strong></td>
-            <td><strong>${data.totals.equipment_hrs.toFixed(1)}</strong></td>
-            <td><strong>${data.totals.personnel_hrs.toFixed(1)}</strong></td>
-            <td></td>
-        `;
+    <td colspan="3"><strong>TOTALS</strong></td>
+    <td style="text-align:right;"><strong>${data.totals.equipment_hrs.toFixed(1)}</strong></td>
+    <td style="text-align:right;"><strong>${data.totals.personnel_hrs.toFixed(1)}</strong></td>
+    <td></td>
+`;
         reportFooter.appendChild(footerRow);
     }
 
