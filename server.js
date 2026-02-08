@@ -277,6 +277,154 @@ app.get('/api/reports/daily', async (req, res) => {
     }
 });
 
+// ============ INVENTORY INTEGRATION ============
+const INVENTORY_API = 'https://rac-inventory-production.up.railway.app/api/inventory-summary';
+
+// Live proxy - main summary
+app.get('/api/inventory/live', async (req, res) => {
+    try {
+        const response = await fetch(INVENTORY_API);
+        if (!response.ok) throw new Error(`Inventory API returned ${response.status}`);
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        console.error('Inventory fetch error:', error);
+        res.status(502).json({ error: 'Inventory API unavailable', detail: error.message });
+    }
+});
+
+// Live proxy - production breakdown
+app.get('/api/inventory/production', async (req, res) => {
+    try {
+        const days = req.query.days || 30;
+        const response = await fetch(`${INVENTORY_API}/production?days=${days}`);
+        if (!response.ok) throw new Error(`Inventory API returned ${response.status}`);
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        console.error('Inventory production fetch error:', error);
+        res.status(502).json({ error: 'Inventory API unavailable', detail: error.message });
+    }
+});
+
+// Live proxy - sales breakdown
+app.get('/api/inventory/sales', async (req, res) => {
+    try {
+        const days = req.query.days || 30;
+        const response = await fetch(`${INVENTORY_API}/sales?days=${days}`);
+        if (!response.ok) throw new Error(`Inventory API returned ${response.status}`);
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        console.error('Inventory sales fetch error:', error);
+        res.status(502).json({ error: 'Inventory API unavailable', detail: error.message });
+    }
+});
+
+// Live proxy - forward orders
+app.get('/api/inventory/forward-orders', async (req, res) => {
+    try {
+        const response = await fetch(`${INVENTORY_API}/forward-orders`);
+        if (!response.ok) throw new Error(`Inventory API returned ${response.status}`);
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        console.error('Inventory forward orders fetch error:', error);
+        res.status(502).json({ error: 'Inventory API unavailable', detail: error.message });
+    }
+});
+
+// Save month-end snapshot
+app.post('/api/inventory/snapshot', async (req, res) => {
+    try {
+        // Fetch live data from Inventory API
+        const response = await fetch(INVENTORY_API);
+        if (!response.ok) throw new Error(`Inventory API returned ${response.status}`);
+        const data = await response.json();
+
+        const snapshotDate = req.body.date || new Date().toISOString().split('T')[0];
+        const snapshotType = req.body.type || 'month_end';
+
+        const result = await pool.query(`
+            INSERT INTO inventory_snapshots (
+                snapshot_date, snapshot_type,
+                total_soh_tonnes, total_inventory_value,
+                forward_order_count, forward_order_tonnes, forward_order_value,
+                mtd_production, mtd_sales, mtd_sales_revenue, mtd_sales_cost,
+                product_detail, family_groups
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ON CONFLICT (snapshot_date, snapshot_type) DO UPDATE SET
+                total_soh_tonnes = EXCLUDED.total_soh_tonnes,
+                total_inventory_value = EXCLUDED.total_inventory_value,
+                forward_order_count = EXCLUDED.forward_order_count,
+                forward_order_tonnes = EXCLUDED.forward_order_tonnes,
+                forward_order_value = EXCLUDED.forward_order_value,
+                mtd_production = EXCLUDED.mtd_production,
+                mtd_sales = EXCLUDED.mtd_sales,
+                mtd_sales_revenue = EXCLUDED.mtd_sales_revenue,
+                mtd_sales_cost = EXCLUDED.mtd_sales_cost,
+                product_detail = EXCLUDED.product_detail,
+                family_groups = EXCLUDED.family_groups,
+                captured_at = CURRENT_TIMESTAMP
+            RETURNING id, snapshot_date
+        `, [
+            snapshotDate,
+            snapshotType,
+            data.totals?.sohTonnes,
+            data.totals?.inventoryValue,
+            data.totals?.forwardOrders?.orderCount,
+            data.totals?.forwardOrders?.tonnes,
+            data.totals?.forwardOrders?.estimatedValue,
+            data.totals?.mtd?.production,
+            data.totals?.mtd?.sales,
+            data.totals?.mtd?.salesRevenue,
+            data.totals?.mtd?.salesCost,
+            JSON.stringify(data.products),
+            JSON.stringify(data.familyGroups)
+        ]);
+
+        res.json({
+            success: true,
+            message: `Snapshot saved for ${snapshotDate}`,
+            id: result.rows[0].id
+        });
+    } catch (error) {
+        console.error('Snapshot save error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get snapshot history
+app.get('/api/inventory/snapshots', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT * FROM inventory_snapshots 
+            ORDER BY snapshot_date DESC
+        `);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Snapshot fetch error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get single snapshot by date
+app.get('/api/inventory/snapshots/:date', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM inventory_snapshots WHERE snapshot_date = $1',
+            [req.params.date]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'No snapshot for that date' });
+        }
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Snapshot fetch error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Catch-all: serve index.html for client-side routing
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));

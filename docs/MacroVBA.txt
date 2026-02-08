@@ -1,0 +1,511 @@
+Option Explicit
+
+' ========= CONFIG =========
+Public Const DAILY_LOG_SHEET As String = "Daily Log"
+Public Const SRC_CELL_DATE   As String = "J2"      ' date lives on the day sheet here
+Private Const DAILY_LOG_PWD  As String = ""        ' password if Daily Log is protected ("" = none)
+
+' ========= DAILY LOG COLUMN MAP (A..O) =========
+Public Const DL_COL_DATE        As Long = 1   ' A
+Public Const DL_COL_EQUIP       As Long = 2   ' B
+Public Const DL_COL_OPER        As Long = 3   ' C  (Operated hours)
+Public Const DL_COL_STBY        As Long = 4   ' D  (Standby)
+Public Const DL_COL_BD          As Long = 5   ' E  (Breakdown)
+Public Const DL_COL_VAR_DAYS    As Long = 6   ' F  (Variations Rate Days Hired)
+Public Const DL_COL_MOB_BARGE   As Long = 7   ' G
+Public Const DL_COL_DEMOB_BARGE As Long = 8   ' H
+Public Const DL_COL_MOB_ROAD    As Long = 9   ' I
+Public Const DL_COL_DEMOB_ROAD  As Long = 10  ' J
+Public Const DL_COL_PREP        As Long = 11  ' K
+Public Const DL_COL_OP_INDUCT   As Long = 12  ' L
+Public Const DL_COL_OP_MOB      As Long = 13  ' M
+Public Const DL_COL_OP_DEMOB    As Long = 14  ' N
+Public Const DL_COL_NOTES       As Long = 15  ' O
+
+' Back-compat aliases so old lines compile
+Public Const DL_COL_BREAKDOWN   As Long = DL_COL_BD
+Public Const DL_COL_BD_OLD      As Long = DL_COL_BD
+
+' ========= MODULE-LEVEL LOOKUP MAPS =========
+Private mPeopleMap As Object   ' "arthur de saint andrieu" -> "Operator 3"
+Private mPlantMap  As Object   ' "bell moxy tat 56"        -> "Bell 30t Articulated Dumptruck #1"
+
+' ===================== PUBLIC MACROS =====================
+
+' Sync ONLY the active date sheet into Daily Log (safe to run as you work)
+Public Sub SyncActiveDateSheet()
+    Dim wsSrc As Worksheet, wsDL As Worksheet
+    Dim hdr As Long, wrote As Long, dt As Date
+
+    BuildLookupMaps mPeopleMap, mPlantMap
+
+    Set wsSrc = ActiveSheet
+    If TypeName(wsSrc) <> "Worksheet" Then
+        MsgBox "Active sheet is not a worksheet.", vbExclamation: Exit Sub
+    End If
+    If Not IsDateSheet(wsSrc) Then
+        MsgBox "Active sheet does not look like a date sheet (J2 isn't a date or name isn't like '2 Nov 25').", vbExclamation
+        Exit Sub
+    End If
+
+    Set wsDL = GetDailyLog()
+    hdr = GetDailyHeaderRow(wsDL): If hdr < 1 Then hdr = 1
+
+    On Error Resume Next
+    dt = CDate(wsSrc.Range(SRC_CELL_DATE).Value)
+    On Error GoTo 0
+    If Not IsDate(dt) Then
+        MsgBox "J2 is not a valid date. Type a real date in J2.", vbExclamation
+        Exit Sub
+    End If
+
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+
+    ' Clear existing rows for this date then write fresh
+    DeleteDailyRowsForDate wsDL, hdr, dt
+    wrote = WriteRowsFromSource(wsSrc, wsDL, hdr)
+
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+End Sub
+
+' Rebuild Daily Log from ALL visible date sheets (clean re-gen)
+Public Sub RebuildAll()
+    Dim ws As Worksheet, wsDL As Worksheet
+    Dim hdr As Long, wrote As Long, total As Long
+
+    BuildLookupMaps mPeopleMap, mPlantMap
+
+    Set wsDL = GetDailyLog()
+    hdr = GetDailyHeaderRow(wsDL): If hdr < 1 Then hdr = 1
+
+    ' Clear everything below header (contents only)
+    ClearDailyFromRow wsDL, hdr + 1
+
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+
+    For Each ws In ThisWorkbook.Worksheets
+        If IsDateSheet(ws) Then
+            wrote = WriteRowsFromSource(ws, wsDL, hdr)
+            total = total + wrote
+        End If
+    Next ws
+
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+End Sub
+
+' Pack blanks and sort Daily Log by Date then Equipment
+Public Sub PackAndOrderDailyLog()
+    Dim wsDL As Worksheet, hdr As Long, lastRow As Long
+    Dim rngAll As Range, rngData As Range
+
+    Set wsDL = GetDailyLog()
+    hdr = GetDailyHeaderRow(wsDL): If hdr < 1 Then hdr = 1
+
+    lastRow = wsDL.Cells(wsDL.Rows.Count, "A").End(xlUp).Row
+    If lastRow <= hdr Then Exit Sub
+
+    Set rngAll = wsDL.Range("A" & hdr & ":O" & lastRow)
+    Set rngData = rngAll.Offset(1).Resize(rngAll.Rows.Count - 1)
+
+    Application.ScreenUpdating = False
+    On Error Resume Next
+    rngAll.AutoFilter Field:=1, Criteria1:="="       ' blank Date
+    If rngData.SpecialCells(xlCellTypeVisible).Rows.Count > 0 Then
+        rngData.SpecialCells(xlCellTypeVisible).EntireRow.Delete
+    End If
+    rngAll.AutoFilter
+    On Error GoTo 0
+
+    lastRow = wsDL.Cells(wsDL.Rows.Count, "A").End(xlUp).Row
+    If lastRow <= hdr Then Application.ScreenUpdating = True: Exit Sub
+
+    With wsDL.Sort
+        .SortFields.Clear
+        .SortFields.Add Key:=wsDL.Range("A" & hdr + 1 & ":A" & lastRow), _
+                        SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:=xlSortNormal
+        .SortFields.Add Key:=wsDL.Range("B" & hdr + 1 & ":B" & lastRow), _
+                        SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:=xlSortNormal
+        .SetRange wsDL.Range("A" & hdr & ":O" & lastRow)
+        .Header = xlYes
+        .Apply
+    End With
+    Application.ScreenUpdating = True
+End Sub
+
+' Save active sheet as 1-page PDF and open Outlook email (recipients fixed)
+Public Sub SaveAndSend_Dayworks()
+    Const EMAIL_TO As String = _
+    "Daniel.Salisbury@riotinto.com; N.Deininger@riotinto.com; Aaron.Hendriks@riotinto.com;" & _
+    " Annabel.Liu@riotinto.com; K.Saunders@riotinto.com; Nicholas.Carson2@riotinto.com;" & _
+    " Joshua.Cleal@riotinto.com; gavin.law@rirratjingu.com; annie.saunders@riotinto.com;" & _
+    " d.logan@riotinto.com; warwick.m@rirratjingu.com; jarrad.ernst@rirratjingu.com"
+
+    Dim ws As Worksheet, dt As Date
+    Dim baseFolder As String, pdfPath As String, pdfName As String
+    Dim OutApp As Object, OutMail As Object
+
+    Set ws = ActiveSheet
+    On Error Resume Next: dt = CDate(ws.Range(SRC_CELL_DATE).Value): On Error GoTo 0
+    If dt = 0 Then dt = Date
+
+    With ws.PageSetup
+        .Orientation = xlLandscape: .Zoom = False
+        .FitToPagesWide = 1: .FitToPagesTall = 1
+        .CenterHorizontally = True: .CenterVertically = False
+    End With
+
+    baseFolder = Environ$("USERPROFILE") & "\Documents\Dayworks\"
+    If Dir(baseFolder, vbDirectory) = "" Then MkDir baseFolder
+    pdfName = "Dayworks " & Format(dt, "dd mmm yyyy") & ".pdf"
+    pdfPath = baseFolder & pdfName
+
+    ws.ExportAsFixedFormat xlTypePDF, pdfPath
+
+    Set OutApp = CreateObject("Outlook.Application")
+    Set OutMail = OutApp.CreateItem(0)
+    With OutMail
+        .To = EMAIL_TO
+        .Subject = "Pond 6 South – Dayworks – " & Format(dt, "dd mmm yyyy")
+        .Body = "Please find attached the Dayworks record for " & Format(dt, "dd mmm yyyy") & "."
+        .Attachments.Add pdfPath
+        .Display   ' use .Send to auto-send
+    End With
+End Sub
+
+' ===================== CORE =====================
+
+' Personnel rows:  B=name ? map via Operators A?B;   C/D/E = hours; H = notes
+' Plant rows:      B=plant label/alias ? standard plant name; ignore SMU C/D; E/F/G = hours; H=Days; I=notes
+Private Function WriteRowsFromSource(ByVal wsSrc As Worksheet, _
+                                     ByVal wsDst As Worksheet, _
+                                     ByVal headerRow As Long) As Long
+    Dim r As Long, lastR As Long, dstR As Long, wrote As Long
+    Dim labelB As String, section As String, srcDate As Date
+    Dim vOp As Variant, vStby As Variant, vBd As Variant, vNotes As String, daysVal As Variant
+    Dim daysCol As Long, equipCode As String
+
+    If Not IsDate(wsSrc.Range(SRC_CELL_DATE).Value) Then Exit Function
+    srcDate = CDate(wsSrc.Range(SRC_CELL_DATE).Value)
+
+    lastR = LastUsedRow(wsSrc, 2)              ' scan by column B
+    If lastR < 1 Then Exit Function
+
+    dstR = FirstFreeRow(wsDst, DL_COL_DATE, headerRow)
+    section = ""
+
+    ' find "Variations Rate Days Hired" (or "Days Hired") column on the Daily Log
+    daysCol = FindDailyCol(wsDst, headerRow, "Variations Rate Days Hired")
+    If daysCol = 0 Then daysCol = FindDailyCol(wsDst, headerRow, "Days Hired")
+
+    For r = 1 To lastR
+        labelB = Trim$(CStr(wsSrc.Cells(r, 2).Value))
+
+        ' Section markers in column B
+        Select Case LCase$(labelB)
+            Case "personnel": section = "personnel": GoTo NextRow
+            Case "plant":     section = "plant":     GoTo NextRow
+        End Select
+        If LCase$(Left$(labelB, 8)) = "progress" Then section = "": GoTo NextRow
+        If LCase$(Left$(labelB, 9)) = "materials" Then section = "": GoTo NextRow
+
+        If Trim$(labelB) = "" Then GoTo NextRow
+        If section = "" Then GoTo NextRow
+
+        If section = "personnel" Then
+            ' Column mapping from day sheet:
+            ' C/D/E = hours, H = notes
+            vOp = Nz(wsSrc.Cells(r, 3).Value, 0)         ' C
+            vStby = Nz(wsSrc.Cells(r, 4).Value, 0)       ' D
+            vBd = Nz(wsSrc.Cells(r, 5).Value, 0)         ' E
+            vNotes = Trim$(CStr(Nz(wsSrc.Cells(r, 8).Value, "")))   ' H
+
+            If (Len(labelB) > 0) Or (Val(vOp) + Val(vStby) + Val(vBd) <> 0) Then
+                wsDst.Cells(dstR, DL_COL_DATE).Value = srcDate
+                equipCode = ResolveEquipOrOperator(labelB, mPeopleMap, mPlantMap)  ' Operator n if person
+                wsDst.Cells(dstR, DL_COL_EQUIP).Value = equipCode
+                wsDst.Cells(dstR, DL_COL_OPER).Value = vOp
+                wsDst.Cells(dstR, DL_COL_STBY).Value = vStby
+                wsDst.Cells(dstR, DL_COL_BREAKDOWN).Value = vBd
+                wsDst.Cells(dstR, DL_COL_NOTES).Value = vNotes      ' NOTES ? O
+                dstR = dstR + 1: wrote = wrote + 1
+            End If
+
+        ElseIf section = "plant" Then
+            ' IGNORE SMU C/D; E/F/G = hours; H = Days; I = notes
+            vOp = Nz(wsSrc.Cells(r, 5).Value, 0)         ' E
+            vStby = Nz(wsSrc.Cells(r, 6).Value, 0)       ' F
+            vBd = Nz(wsSrc.Cells(r, 7).Value, 0)         ' G
+            daysVal = Nz(wsSrc.Cells(r, 8).Value, 0)     ' H (Days Hired)
+            vNotes = Trim$(CStr(Nz(wsSrc.Cells(r, 9).Value, "")))   ' I (Activity/notes)
+
+            If (Len(labelB) > 0) Or (Val(vOp) + Val(vStby) + Val(vBd) <> 0) Or (Val(daysVal) > 0) Then
+                wsDst.Cells(dstR, DL_COL_DATE).Value = srcDate
+                equipCode = ResolveEquipOrOperator(labelB, mPeopleMap, mPlantMap)  ' alias ? standard plant
+                wsDst.Cells(dstR, DL_COL_EQUIP).Value = equipCode
+                wsDst.Cells(dstR, DL_COL_OPER).Value = vOp
+                wsDst.Cells(dstR, DL_COL_STBY).Value = vStby
+                wsDst.Cells(dstR, DL_COL_BREAKDOWN).Value = vBd
+                If daysCol > 0 Then wsDst.Cells(dstR, daysCol).Value = daysVal     ' put Days into F
+                wsDst.Cells(dstR, DL_COL_NOTES).Value = vNotes                      ' NOTES ? O
+                dstR = dstR + 1: wrote = wrote + 1
+            End If
+        End If
+NextRow:
+    Next r
+
+    WriteRowsFromSource = wrote
+End Function
+
+' ===================== LOOKUPS & HELPERS =====================
+
+' Normalise a key for matching
+Private Function NormKey(ByVal s As String) As String
+    Dim t As String
+    t = CStr(s)
+    t = Replace(t, vbTab, " ")
+    t = Replace(t, ".", "")
+    t = Application.WorksheetFunction.Trim(t)  ' collapse multi-spaces
+    NormKey = LCase$(t)
+End Function
+
+' Operators sheet:
+'   - If B matches "Operator n" ? people map
+'   - Else treat row as plant alias ? plant map
+Private Sub BuildLookupMaps(ByRef peopleMap As Object, ByRef plantMap As Object)
+    Dim ws As Worksheet, lastR As Long, r As Long
+    Dim a As String, b As String
+    Dim rxOp As Object
+
+    Set peopleMap = CreateObject("Scripting.Dictionary")
+    Set plantMap = CreateObject("Scripting.Dictionary")
+
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets("Operators")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    lastR = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+
+    Set rxOp = CreateObject("VBScript.RegExp")
+    rxOp.Pattern = "^\s*operator\s*(\d+)\s*$"
+    rxOp.IgnoreCase = True
+
+    For r = 2 To lastR
+        a = Trim$(CStr(ws.Cells(r, 1).Value))  ' Real Name or Plant alias
+        b = Trim$(CStr(ws.Cells(r, 2).Value))  ' "Operator n" or standard plant name
+        If a <> "" And b <> "" Then
+            If rxOp.Test(b) Then
+                peopleMap(NormKey(a)) = "Operator " & rxOp.Execute(b)(0).SubMatches(0)
+            Else
+                plantMap(NormKey(a)) = b
+            End If
+        End If
+    Next r
+End Sub
+
+' Decide Operator code or standard plant name for a raw label from the day sheet (column B)
+Private Function ResolveEquipOrOperator(ByVal rawText As String, _
+                                        ByVal peopleMap As Object, _
+                                        ByVal plantMap As Object) As String
+    Dim k As String
+    k = NormKey(rawText)
+
+    If Not peopleMap Is Nothing Then
+        If peopleMap.exists(k) Then
+            ResolveEquipOrOperator = peopleMap(k)
+            Exit Function
+        End If
+    End If
+    If Not plantMap Is Nothing Then
+        If plantMap.exists(k) Then
+            ResolveEquipOrOperator = plantMap(k)
+            Exit Function
+        End If
+    End If
+
+    ' Safety nets if the sheet already uses the final names
+    If InStr(k, "bell 30t") > 0 And InStr(k, "dumptruck") > 0 Then
+        ResolveEquipOrOperator = "Bell 30t Articulated Dumptruck #1"
+    ElseIf InStr(k, "komatsu 30t") > 0 And InStr(k, "dumptruck") > 0 Then
+        ResolveEquipOrOperator = "Komatsu 30t Articulated Dumptruck #2"
+    Else
+        ResolveEquipOrOperator = rawText ' leave as-is (e.g., Water Truck)
+    End If
+End Function
+
+' Identify date sheets (J2 is date OR sheet name like "2 Nov 25")
+Public Function IsDateSheet(ByVal ws As Worksheet) As Boolean
+    On Error GoTo EH
+    If ws Is Nothing Then GoTo EH
+    If ws.Visible <> xlSheetVisible Then GoTo EH
+    If IsDate(ws.Range(SRC_CELL_DATE).Value) Then IsDateSheet = True: Exit Function
+
+    Dim rx As Object
+    Set rx = CreateObject("VBScript.RegExp")
+    rx.Pattern = "^\s*\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(\d{2}|\d{4})\s*$"
+    rx.IgnoreCase = True
+    IsDateSheet = rx.Test(ws.Name)
+    Exit Function
+EH:
+    IsDateSheet = False
+End Function
+
+Private Function GetDailyLog() As Worksheet
+    On Error Resume Next
+    Set GetDailyLog = ThisWorkbook.Worksheets(DAILY_LOG_SHEET)
+    On Error GoTo 0
+    If GetDailyLog Is Nothing Then Err.Raise vbObjectError + 1001, , "'" & DAILY_LOG_SHEET & "' sheet not found."
+End Function
+
+Private Function GetDailyHeaderRow(ByVal ws As Worksheet) As Long
+    Dim r As Long, lastCheck As Long, a As String, b As String
+    lastCheck = WorksheetFunction.Min(20, ws.Rows.Count)
+    For r = 1 To lastCheck
+        a = LCase$(Trim$(CStr(ws.Cells(r, DL_COL_DATE).Value)))
+        b = LCase$(Trim$(CStr(ws.Cells(r, DL_COL_EQUIP).Value)))
+        If (a = "date" Or InStr(a, "date") > 0) And _
+           (b Like "*equip*" Or b = "equipment") Then
+            GetDailyHeaderRow = r
+            Exit Function
+        End If
+    Next r
+    GetDailyHeaderRow = 1
+End Function
+
+' Clear contents (not rows) from startRow to end (keep formatting)
+Private Sub ClearDailyFromRow(ByVal ws As Worksheet, ByVal startRow As Long)
+    Dim lastR As Long, wasProt As Boolean
+    wasProt = IsSheetProtected(ws)
+    If wasProt Then On Error Resume Next: ws.Unprotect DAILY_LOG_PWD: On Error GoTo 0
+
+    lastR = ws.Cells(ws.Rows.Count, DL_COL_DATE).End(xlUp).Row
+    If lastR >= startRow Then ws.Rows(startRow & ":" & lastR).ClearContents
+
+    If wasProt Then On Error Resume Next: ws.Protect DAILY_LOG_PWD, True, True, True: On Error GoTo 0
+End Sub
+
+
+' Clear rows for a specific date (contents only)
+Private Sub DeleteDailyRowsForDate(ByVal ws As Worksheet, ByVal headerRow As Long, ByVal d As Date)
+    Dim r As Long, lastR As Long, wasProt As Boolean
+    wasProt = IsSheetProtected(ws)
+    If wasProt Then On Error Resume Next: ws.Unprotect DAILY_LOG_PWD: On Error GoTo 0
+
+    lastR = ws.Cells(ws.Rows.Count, DL_COL_DATE).End(xlUp).Row
+
+    Application.DisplayAlerts = False
+    For r = lastR To headerRow + 1 Step -1
+        If IsDate(ws.Cells(r, DL_COL_DATE).Value) Then
+            If CLng(ws.Cells(r, DL_COL_DATE).Value) = CLng(d) Then
+                ws.Rows(r).ClearContents
+            End If
+        End If
+    Next r
+    Application.DisplayAlerts = True
+
+    If wasProt Then On Error Resume Next: ws.Protect DAILY_LOG_PWD, True, True, True: On Error GoTo 0
+End Sub
+
+Public Function TryParseDateFromName(nm As String) As Variant
+    On Error GoTo Fail
+    Dim rx As Object, m As Object, mon As String, d As Long, y As Long, mm As Long
+    Set rx = CreateObject("VBScript.RegExp")
+    rx.Pattern = "^\s*(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(\d{2}|\d{4})\s*$"
+    rx.IgnoreCase = True
+
+    If rx.Test(nm) Then
+        Set m = rx.Execute(nm)(0)
+        d = CLng(m.SubMatches(0))
+        mon = LCase$(m.SubMatches(1))
+        y = CLng(m.SubMatches(2))
+        If y < 100 Then y = 2000 + y
+
+        mm = Switch( _
+            mon = "jan", 1, _
+            mon = "feb", 2, _
+            mon = "mar", 3, _
+            mon = "apr", 4, _
+            mon = "may", 5, _
+            mon = "jun", 6, _
+            mon = "jul", 7, _
+            mon = "aug", 8, _
+            mon = "sep" Or mon = "sept", 9, _
+            mon = "oct", 10, _
+            mon = "nov", 11, _
+            mon = "dec", 12)
+
+        TryParseDateFromName = DateSerial(y, mm, d)
+        Exit Function
+    End If
+
+Fail:
+    TryParseDateFromName = Empty
+End Function
+
+
+
+Private Function IsSheetProtected(ByVal ws As Worksheet) As Boolean
+    IsSheetProtected = (ws.ProtectContents Or ws.ProtectDrawingObjects Or ws.ProtectScenarios)
+End Function
+
+' ===== Missing helpers (drop-in) =====================================
+
+Public Function LastUsedRow(ByVal ws As Worksheet, ByVal col As Long) As Long
+    Dim r As Long
+    r = ws.Cells(ws.Rows.Count, col).End(xlUp).Row
+    If r < 1 Then r = 1
+    LastUsedRow = r
+End Function
+
+Public Function NextFreeRow(ByVal ws As Worksheet, ByVal col As Long, ByVal minRow As Long) As Long
+    Dim r As Long
+    r = ws.Cells(ws.Rows.Count, col).End(xlUp).Row + 1
+    If r < minRow Then r = minRow
+    NextFreeRow = r
+End Function
+
+Public Function FindDailyCol(ByVal ws As Worksheet, ByVal headerRow As Long, ByVal headerText As String) As Long
+    Dim c As Long, lastC As Long, t As String, want As String
+    want = LCase$(Trim$(headerText))
+    lastC = ws.Cells(headerRow, ws.Columns.Count).End(xlToLeft).Column
+    ' exact match first
+    For c = 1 To lastC
+        t = LCase$(Trim$(CStr(ws.Cells(headerRow, c).Value)))
+        If t = want Then FindDailyCol = c: Exit Function
+    Next c
+    ' then contains match
+    For c = 1 To lastC
+        t = LCase$(Trim$(CStr(ws.Cells(headerRow, c).Value)))
+        If InStr(1, t, want, vbTextCompare) > 0 Then FindDailyCol = c: Exit Function
+    Next c
+End Function
+
+Public Function Nz(ByVal v As Variant, Optional ByVal fallback As Variant = 0) As Variant
+    If IsError(v) Then
+        Nz = fallback
+    ElseIf IsEmpty(v) Then
+        Nz = fallback
+    ElseIf VarType(v) = vbString Then
+        If Len(Trim$(v & "")) = 0 Then Nz = fallback Else Nz = v
+    Else
+        Nz = v
+    End If
+End Function
+
+' Return the first empty row in column `col` at or below the header
+Public Function FirstFreeRow(ByVal ws As Worksheet, ByVal col As Long, ByVal headerRow As Long) As Long
+    Dim r As Long, last As Long
+    last = ws.Cells(ws.Rows.Count, col).End(xlUp).Row
+    For r = headerRow + 1 To last
+        If Len(ws.Cells(r, col).Value) = 0 Then
+            FirstFreeRow = r
+            Exit Function
+        End If
+    Next r
+    FirstFreeRow = last + 1
+End Function
+
